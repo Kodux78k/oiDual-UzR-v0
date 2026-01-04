@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>DUAL // FUSION MONOLITH</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#020202">
+<link rel="apple-touch-icon" href="icon-192.png">
+
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js')
+      .then(() => console.log('Service Worker Registered'));
+  }
+</script>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { ui: ['Inter', 'sans-serif'], code: ['JetBrains Mono', 'monospace'] },
+          colors: {
+            dual: { bg: '#020202', glass: 'rgba(15, 15, 20, 0.7)', border: 'rgba(255, 255, 255, 0.08)', cyan: '#00f2ff', purple: '#bd00ff' }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    :root { --neon-cyan: #00f2ff; --ease-morph: cubic-bezier(0.34, 1.56, 0.64, 1); }
+    body { background: #020202; overflow: hidden; font-family: 'Inter', sans-serif; }
+    
+    /* Background Ambient */
+    .void-ambient {
+      position: fixed; inset: 0; z-index: 0;
+      background: radial-gradient(circle at 20% 120%, rgba(189,0,255,0.08), transparent 50%),
+                  radial-gradient(circle at 80% -20%, rgba(0,242,255,0.05), transparent 50%);
+    }
+
+    /* Morphing Card */
+    .fusion-monolith {
+      background: var(--dual-glass);
+      backdrop-filter: blur(30px) saturate(150%);
+      border: 1px solid rgba(255,255,255,0.08);
+      transition: all 0.6s var(--ease-morph);
+      will-change: width, height, border-radius;
+    }
+
+    .fusion-monolith.closed {
+      width: 280px; height: 80px; border-radius: 24px; cursor: pointer;
+    }
+    
+    .fusion-monolith.open {
+      width: min(900px, 95vw); height: min(700px, 85vh); border-radius: 32px;
+    }
+
+    /* Stagger Animation */
+    .stagger-item { opacity: 0; transform: translateY(10px); transition: 0.4s ease; }
+    .open .stagger-item { opacity: 1; transform: translateY(0); }
+
+    /* Scanline Effect */
+    .scanline {
+      background: linear-gradient(to bottom, transparent 50%, rgba(0,242,255,0.02) 50%);
+      background-size: 100% 4px; pointer-events: none;
+    }
+
+    /* Vibe 369 Gold */
+    .vibe-gold { box-shadow: 0 0 20px rgba(255, 210, 80, 0.15); border-color: rgba(255, 210, 80, 0.3) !important; }
+
+    /* Editor Modal */
+    .editor-overlay {
+      position: fixed; inset: 0; z-index: 100; display: none;
+      background: rgba(0,0,0,0.8); backdrop-filter: blur(10px); align-items: center; justify-content: center;
+    }
+    .editor-overlay.active { display: flex; }
+    
+    .tool-btn { @apply w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-gray-400 hover:text-dual-cyan hover:border-dual-cyan/50 transition-all backdrop-blur-md; }
+  </style>
+</head>
+<body class="antialiased text-white selection:bg-dual-cyan selection:text-black">
+
+  <div class="void-ambient" aria-hidden="true"></div>
+  <iframe id="navFrame" src="about:blank" class="fixed inset-0 w-full h-full border-0 z-0 bg-black"></iframe>
+
+  <div class="fixed left-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-40">
+    <button onclick="document.getElementById('uploadHTML').click()" class="tool-btn" title="Importar HTML"><i class="fa-solid fa-file-import"></i></button>
+    <input id="uploadHTML" type="file" accept=".html" class="hidden" onchange="App.handleFileUpload(event)">
+    <button onclick="App.openRemote()" class="tool-btn" title="URL Remota"><i class="fa-solid fa-globe"></i></button>
+    <button onclick="App.toggleTheme()" class="tool-btn" title="Tema"><i class="fa-solid fa-circle-half-stroke"></i></button>
+  </div>
+
+  <div class="fixed inset-0 flex items-center justify-center z-50 pointer-events-none p-4">
+    <div id="monolith" class="fusion-monolith closed flex flex-col overflow-hidden pointer-events-auto shadow-2xl relative" onclick="App.toggleSystem(true)">
+      
+      <div class="flex items-center justify-between px-6 py-4 h-[80px] shrink-0 border-b border-white/5 bg-white/5">
+        <div class="flex items-center gap-4">
+          <div id="avatarBox" class="w-12 h-12 rounded-xl bg-black/40 border border-white/10 flex items-center justify-center overflow-hidden">
+             </div>
+          <div class="flex flex-col">
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] font-bold text-dual-cyan tracking-[0.2em] uppercase">System</span>
+              <div id="statusLed" class="w-1.5 h-1.5 rounded-full bg-dual-cyan animate-pulse"></div>
+            </div>
+            <span id="userNameDisplay" class="font-bold text-lg leading-none">Convidado</span>
+          </div>
+        </div>
+        
+        <div class="flex items-center gap-3">
+          <div id="clockDisplay" class="font-code text-sm text-white/40 hidden md:block">00:00</div>
+          <button id="closeBtn" class="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center hidden opacity-0 transition-opacity" onclick="event.stopPropagation(); App.toggleSystem(false)">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+
+      <div id="smallPreview" class="absolute bottom-3 left-6 right-6 flex items-center justify-between text-[10px] font-code text-white/30 uppercase tracking-widest">
+        <span>Pronto para ativação</span>
+        <span id="vibeBadge">v:--</span>
+      </div>
+
+      <div id="monolithBody" class="flex-1 p-8 overflow-y-auto hidden opacity-0 flex flex-col gap-6">
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="stagger-item delay-100 flex flex-col gap-2">
+            <label class="text-[10px] font-bold text-white/40 uppercase tracking-wider">Identificação do Operador</label>
+            <input type="text" id="userInput" placeholder="Insira seu nome..." class="w-full bg-black/40 border border-white/10 rounded-2xl px-5 py-4 focus:border-dual-cyan outline-none transition-all font-code">
+          </div>
+          <div class="stagger-item delay-200 grid grid-cols-2 gap-3">
+             <button onclick="App.openEditor()" class="flex items-center justify-center gap-2 bg-white/5 border border-white/10 rounded-2xl hover:bg-dual-cyan hover:text-black transition-all text-xs font-bold uppercase tracking-tighter">
+                <i data-lucide="code-2" class="w-4 h-4"></i> Editor HTML
+             </button>
+             <button id="infodoseBtn" class="flex items-center justify-center gap-2 bg-white/5 border border-white/10 rounded-2xl hover:border-dual-purple/50 transition-all text-xs font-bold uppercase tracking-tighter">
+                <i data-lucide="zap" class="w-4 h-4 text-dual-purple"></i> Infodose
+             </button>
+          </div>
+        </div>
+
+        <div id="dropZone" class="stagger-item delay-300 h-32 rounded-3xl border-2 border-dashed border-white/5 bg-black/20 hover:border-dual-cyan/30 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all">
+          <i data-lucide="layout-grid" class="text-white/20"></i>
+          <span class="text-xs font-medium text-white/40">Arraste módulos (.html) para injetar</span>
+        </div>
+
+        <div id="stackList" class="stagger-item delay-500 flex flex-col gap-2 pb-10">
+          </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div id="editorModal" class="editor-overlay">
+    <div class="w-[95%] h-[90%] bg-[#08080a] border border-white/10 rounded-3xl overflow-hidden flex flex-col shadow-2xl">
+      <div class="flex items-center justify-between p-4 border-b border-white/5 bg-black/40">
+        <span class="font-code text-xs text-dual-cyan tracking-widest">RAW_HTML_EDITOR</span>
+        <div class="flex gap-2">
+          <button onclick="App.applyEditor()" class="px-4 py-1.5 bg-dual-cyan text-black text-xs font-bold rounded-full hover:brightness-110">APLICAR</button>
+          <button onclick="App.closeEditor()" class="px-4 py-1.5 bg-white/5 text-white text-xs font-bold rounded-full hover:bg-white/10">FECHAR</button>
+        </div>
+      </div>
+      <textarea id="editorArea" spellcheck="false" class="flex-1 bg-transparent p-6 font-code text-sm text-cyan-50/80 outline-none resize-none" placeholder="Cole seu código HTML aqui..."></textarea>
+    </div>
+  </div>
+
+  <div id="toast" class="fixed bottom-10 left-1/2 -translate-x-1/2 px-6 py-2 bg-black/80 border border-dual-cyan/30 rounded-full text-[10px] font-code text-dual-cyan tracking-widest opacity-0 transition-all z-[200] pointer-events-none">SYSTEM READY</div>
+
+  <script>
+    const App = {
+      state: { isOpen: false, user: 'Convidado', stacks: [] },
+
+      init() {
+        lucide.createIcons();
+        this.loadStacks();
+        this.updateClock();
+        setInterval(() => this.updateClock(), 1000);
+
+        // Inputs & Events
+        const userInput = document.getElementById('userInput');
+        userInput.addEventListener('input', (e) => this.handleUserUpdate(e.target.value));
+        
+        const savedUser = localStorage.getItem('dual_user') || 'Convidado';
+        this.handleUserUpdate(savedUser);
+        userInput.value = savedUser === 'Convidado' ? '' : savedUser;
+      },
+
+      toggleSystem(force) {
+        const m = document.getElementById('monolith');
+        const body = document.getElementById('monolithBody');
+        const closeBtn = document.getElementById('closeBtn');
+        const preview = document.getElementById('smallPreview');
+
+        if (force === this.state.isOpen) return;
+        this.state.isOpen = force;
+
+        if (force) {
+          m.classList.replace('closed', 'open');
+          setTimeout(() => {
+            body.classList.remove('hidden');
+            setTimeout(() => { body.classList.add('opacity-100'); closeBtn.classList.remove('hidden'); closeBtn.classList.add('opacity-100'); preview.classList.add('hidden'); }, 50);
+          }, 300);
+        } else {
+          body.classList.remove('opacity-100');
+          closeBtn.classList.add('opacity-0');
+          setTimeout(() => {
+            body.classList.add('hidden');
+            m.classList.replace('open', 'closed');
+            preview.classList.remove('hidden');
+          }, 300);
+        }
+      },
+
+      handleUserUpdate(name) {
+        const val = name.trim() || 'Convidado';
+        this.state.user = val;
+        document.getElementById('userNameDisplay').innerText = val;
+        localStorage.setItem('dual_user', val);
+        
+        // Ativação 3/6/9
+        const root = this.digitalRoot(val);
+        document.getElementById('vibeBadge').innerText = `v:${root}`;
+        const m = document.getElementById('monolith');
+        if ([3,6,9].includes(root)) m.classList.add('vibe-gold');
+        else m.classList.remove('vibe-gold');
+
+        this.updateAvatar(val);
+      },
+
+      digitalRoot(str) {
+        let sum = [...str].reduce((acc, char) => acc + char.charCodeAt(0), 0);
+        while (sum > 9) sum = [...String(sum)].reduce((a, b) => a + parseInt(b), 0);
+        return sum;
+      },
+
+      updateAvatar(name) {
+        const root = this.digitalRoot(name);
+        const hue1 = (root * 40);
+        const hue2 = (hue1 + 180) % 360;
+        const svg = `
+          <svg viewBox="0 0 100 100" class="w-full h-full">
+            <defs>
+              <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:hsl(${hue1}, 100%, 50%)" />
+                <stop offset="100%" style="stop-color:hsl(${hue2}, 100%, 50%)" />
+              </linearGradient>
+            </defs>
+            <rect width="100" height="100" fill="#050505"/>
+            <circle cx="50" cy="50" r="30" fill="url(#grad)" opacity="0.8">
+              <animate attributeName="r" values="28;32;28" dur="3s" repeatCount="indefinite" />
+            </circle>
+            <circle cx="50" cy="50" r="15" fill="white" opacity="0.2"/>
+          </svg>
+        `;
+        document.getElementById('avatarBox').innerHTML = svg;
+      },
+
+      updateClock() {
+        const now = new Date();
+        document.getElementById('clockDisplay').innerText = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      },
+
+      openEditor() {
+        document.getElementById('editorModal').classList.add('active');
+        document.getElementById('editorArea').value = localStorage.getItem('dual_last_html') || '';
+      },
+
+      closeEditor() { document.getElementById('editorModal').classList.remove('active'); },
+
+      applyEditor() {
+        const code = document.getElementById('editorArea').value;
+        const frame = document.getElementById('navFrame');
+        const blob = new Blob([code], { type: 'text/html' });
+        frame.src = URL.createObjectURL(blob);
+        localStorage.setItem('dual_last_html', code);
+        this.showToast("CÓDIGO INJETADO");
+        this.closeEditor();
+      },
+
+      showToast(msg) {
+        const t = document.getElementById('toast');
+        t.innerText = msg;
+        t.classList.replace('opacity-0', 'opacity-100');
+        setTimeout(() => t.classList.replace('opacity-100', 'opacity-0'), 2000);
+      },
+
+      loadStacks() {
+        const raw = localStorage.getItem('dual_stacks') || '[]';
+        this.state.stacks = JSON.parse(raw);
+        this.renderStacks();
+      },
+
+      renderStacks() {
+        const list = document.getElementById('stackList');
+        list.innerHTML = this.state.stacks.length ? '' : '<div class="text-center p-8 text-white/10 font-code text-xs">VETORES VAZIOS</div>';
+        this.state.stacks.forEach((s, i) => {
+          const item = document.createElement('div');
+          item.className = "flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-2xl hover:border-dual-cyan/30 transition-all group";
+          item.innerHTML = `
+            <div class="flex flex-col">
+              <span class="text-sm font-bold">${s.name}</span>
+              <span class="text-[9px] font-code text-white/30 uppercase">${s.date}</span>
+            </div>
+            <button onclick="App.runStack(${i})" class="w-10 h-10 rounded-xl bg-dual-cyan/10 text-dual-cyan flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"><i data-lucide="play" class="w-4 h-4 fill-current"></i></button>
+          `;
+          list.appendChild(item);
+        });
+        lucide.createIcons();
+      },
+
+      runStack(i) {
+        const s = this.state.stacks[i];
+        const frame = document.getElementById('navFrame');
+        frame.srcdoc = s.content;
+        this.showToast(`EXECUTANDO: ${s.name}`);
+        this.toggleSystem(false);
+      },
+
+      handleFileUpload(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          this.state.stacks.unshift({
+            name: file.name,
+            content: ev.target.result,
+            date: new Date().toLocaleString()
+          });
+          localStorage.setItem('dual_stacks', JSON.stringify(this.state.stacks));
+          this.renderStacks();
+          this.showToast("MÓDULO ADICIONADO");
+        };
+        reader.readAsText(file);
+      }
+    };
+
+    window.onload = () => App.init();
+  </script>
+</body>
+</html>
