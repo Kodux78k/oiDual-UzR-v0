@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>DUAL // MONOLITH · Fusion Canvas</title>
+  <meta name="theme-color" content="#020202">
+  <meta name="description" content="DUAL — Monolith + Fusion — Canvas fundido brabo.">
+
+  <!-- Fonts & icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;400;600;800&family=Montserrat:wght@200;600;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Tailwind (light usage for utilities) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    :root{
+      --bg:#020202;
+      --glass: rgba(10,10,12,0.72);
+      --glass-2: rgba(18,18,22,0.6);
+      --neon-cyan: #00f2ff;
+      --neon-purple: #bd00ff;
+      --neon-orange: #ff9a3c;
+      --glass-border: rgba(255,255,255,0.06);
+      --mono-radius: 28px;
+      --ease-overshoot: cubic-bezier(0.34,1.3,0.64,1);
+    }
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: var(--bg);
+      color: #e6f7ff;
+      -webkit-font-smoothing:antialiased;
+      -moz-osx-font-smoothing:grayscale;
+      overflow:hidden;
+    }
+
+    /* Canvas background (fusion blobs + subtle grid) */
+    #bgCanvas{
+      position:fixed; inset:0; z-index:0; width:100%; height:100%; display:block;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.01) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.01) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mix-blend-mode:normal;
+      pointer-events:none;
+    }
+
+    /* Ambient radial overlays */
+    .ambient-overlay{
+      position:fixed; inset:0; z-index:1; pointer-events:none;
+      background:
+        radial-gradient(600px 300px at 8% 20%, rgba(189,0,255,0.06), transparent 15%),
+        radial-gradient(700px 360px at 92% 80%, rgba(0,242,255,0.05), transparent 18%);
+      mix-blend-mode:screen;
+      transition:opacity .6s ease;
+    }
+
+    /* Top controls */
+    .top-controls{
+      position:fixed; top:18px; left:50%; transform:translateX(-50%); z-index:60; display:flex; gap:10px; align-items:center;
+      backdrop-filter: blur(6px);
+    }
+    .btn {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.04);
+      padding:8px 12px; border-radius:999px; color:var(--neon-cyan); cursor:pointer; display:flex; gap:8px; align-items:center;
+    }
+    .btn-muted { color: rgba(255,255,255,0.65); border-color: rgba(255,255,255,0.02); }
+    .btn:active{ transform:translateY(1px) }
+
+    /* Monolith wrapper (center) */
+    .monolith-wrapper{
+      position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; padding:28px; pointer-events:none;
+    }
+    .monolith {
+      width: min(1100px, 94%); height: min(78vh, 820px);
+      border-radius: 24px; background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border:1px solid var(--glass-border); box-shadow: 0 40px 100px rgba(0,0,0,0.7);
+      backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px); overflow:hidden;
+      display:flex; flex-direction:column; pointer-events:auto;
+    }
+
+    /* header */
+    .mono-head{ display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid rgba(255,255,255,0.02); background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent) }
+    .mono-title { display:flex; gap:10px; align-items:center; font-weight:700; letter-spacing:1px; color:#fff; font-family: 'JetBrains Mono', monospace; font-size:12px }
+    .mono-actions{ display:flex; gap:10px; align-items:center }
+
+    /* stage */
+    .mono-stage{ flex:1; display:flex; gap:18px; padding:18px; overflow:hidden }
+    .left-col{ width: 48%; min-width:320px; display:flex; flex-direction:column; gap:12px; overflow:auto; padding-right:6px }
+    .right-col{ flex:1; display:flex; align-items:flex-start; justify-content:center; padding:6px; overflow:auto }
+
+    /* drop zone / stacks */
+    .drop-zone{
+      height:120px; border-radius:16px; border:1px dashed rgba(255,255,255,0.04); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:6px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.006), rgba(255,255,255,0.003));
+    }
+    .stack-list{ display:flex; flex-direction:column; gap:8px; margin-top:8px }
+
+    .stack-item{
+      display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px; border-radius:12px; background: rgba(0,0,0,0.35);
+      border:1px solid rgba(255,255,255,0.02); cursor:pointer;
+    }
+    .stack-item .meta{ display:flex; gap:10px; align-items:center }
+    .badge { min-width:36px; height:36px; display:flex; align-items:center; justify-content:center; border-radius:8px; background: rgba(255,255,255,0.02); color:var(--neon-cyan) }
+
+    /* runtime */
+    .runtime-layer{ position:relative; height:100%; width:100%; border-radius:14px; overflow:hidden; background: #020202; border:1px solid rgba(255,255,255,0.02) }
+    .runtime-iframe{ width:100%; height:100%; border:0; background:#fff; }
+
+    /* fusion card (right) */
+    .fusion-card{
+      width:360px; max-width:44%; background: var(--glass-2); border-radius:20px; padding:18px; box-shadow: 0 18px 50px rgba(0,0,0,0.6);
+      border:1px solid var(--glass-border); color:#fff; transform-origin:center; transition: transform .45s var(--ease-overshoot);
+    }
+    .fusion-card.closed{ width:260px; padding:12px; border-radius:20px; cursor:pointer }
+    .card-header{ display:flex; align-items:center; gap:12px; margin-bottom:10px }
+    .avatar-slot{ width:56px; height:56px; border-radius:12px; overflow:hidden; background:#071018; display:flex; align-items:center; justify-content:center }
+    .brand-dual{ font-family: 'Montserrat', sans-serif; font-weight:900; font-size:22px; letter-spacing:-1px; background: linear-gradient(-45deg,#fff,var(--neon-cyan),var(--neon-purple)); -webkit-background-clip:text; -webkit-text-fill-color:transparent }
+    .greeting-row{ font-size:18px; font-weight:600 }
+
+    .small-preview{ display:flex; gap:10px; align-items:center; background: rgba(255,255,255,0.02); padding:8px; border-radius:10px; margin-top:8px; cursor:pointer }
+
+    .stagger-item{ opacity:0; transform: translateY(12px); transition: all .45s var(--ease-overshoot) }
+    .content-visible .stagger-item{ opacity:1; transform: translateY(0) }
+
+    .cyber-input{ width:100%; padding:12px 14px; border-radius:12px; background: rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.03); color:#e8faff; font-family: 'JetBrains Mono', monospace }
+    .trigger-btn{ width:100%; padding:10px; border-radius:12px; background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.02)); border:1px dashed rgba(255,255,255,0.03); color:#fff; cursor:pointer }
+
+    .stats-grid{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:10px }
+    .stat-box{ background:rgba(255,255,255,0.02); padding:8px; border-radius:8px; text-align:center; font-size:12px; color:rgba(255,255,255,0.9) }
+
+    /* footer small */
+    .foot-controls{ position:fixed; bottom:14px; left:50%; transform:translateX(-50%); z-index:60; display:flex; gap:12px; align-items:center; pointer-events:auto }
+    .orb-btn{ width:48px; height:48px; border-radius:999px; background:var(--glass); display:flex; align-items:center; justify-content:center; border:1px solid rgba(255,255,255,0.04); cursor:pointer }
+
+    /* responsive */
+    @media (max-width:980px){
+      .mono-stage{ flex-direction:column }
+      .left-col, .right-col{ width:auto; min-width:0 }
+      .fusion-card{ width:100% }
+      .monolith{ height:92vh }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Canvas background (painted blobs + subtle grain) -->
+  <canvas id="bgCanvas" aria-hidden="true"></canvas>
+  <div class="ambient-overlay" aria-hidden="true"></div>
+
+  <!-- Top controls -->
+  <div class="top-controls" role="region" aria-label="Controles">
+    <button id="themeToggle" class="btn" title="Mudar Tema"><i data-lucide="sun" style="width:16px;height:16px"></i><span class="sr-only">Tema</span></button>
+    <button id="openEditorBtn" class="btn btn-muted" title="Editor Rápido"><i data-lucide="code" style="width:14px;height:14px"></i> Editar</button>
+    <div id="toast" role="status" aria-live="polite" style="font-family: 'JetBrains Mono'; color:var(--neon-cyan); opacity:0; transition:opacity .25s"></div>
+  </div>
+
+  <!-- Monolith (center) -->
+  <div class="monolith-wrapper" aria-hidden="false">
+    <section class="monolith" role="main" aria-label="Monolith">
+      <header class="mono-head">
+        <div class="mono-title"><i data-lucide="layers" style="width:16px;height:16px;color:var(--neon-cyan)"></i><span>DUAL // MONO</span></div>
+        <div class="mono-actions">
+          <div id="sysStatus" style="font-family: 'JetBrains Mono'; font-size:12px; padding:6px 10px; border-radius:8px; background: rgba(0,242,255,0.06); color:var(--neon-cyan)">STANDBY</div>
+          <button id="quickEditBtn" class="btn btn-muted">Abrir Editor</button>
+        </div>
+      </header>
+
+      <div class="mono-stage">
+        <!-- left: stacks / drop -->
+        <div class="left-col" role="region" aria-label="Stacks">
+          <div class="drop-zone" id="dropZone" tabindex="0" title="Arraste HTML aqui ou clique">
+            <div style="font-family: 'JetBrains Mono'; color:rgba(255,255,255,0.7); font-size:13px">Arraste um módulo • .html .json .js</div>
+            <div style="font-size:11px; color:rgba(255,255,255,0.45)">Clique para selecionar arquivo</div>
+            <input id="fileInput" type="file" accept=".html,.json,.js" style="display:none" />
+          </div>
+
+          <div class="stack-list" id="stackList" aria-live="polite">
+            <!-- dynamically injected -->
+          </div>
+
+          <div style="margin-top:auto; font-size:12px; color:rgba(255,255,255,0.35); padding-top:8px">Dual • Monolith Canvas — v1</div>
+        </div>
+
+        <!-- right: runtime + fusion card -->
+        <div class="right-col">
+          <div style="width:100%; display:flex; gap:14px; align-items:flex-start; justify-content:center;">
+            <!-- runtime preview -->
+            <div class="runtime-layer" style="flex:1; min-width:360px; max-width:640px;">
+              <div style="height:44px; display:flex; align-items:center; justify-content:space-between; padding:8px 12px; border-bottom:1px solid rgba(255,255,255,0.02); background:linear-gradient(180deg, rgba(255,255,255,0.01), transparent)">
+                <div style="font-family:'JetBrains Mono'; color:var(--neon-cyan); font-size:12px">RUNTIME // SANDBOX</div>
+                <div style="display:flex; gap:6px; align-items:center">
+                  <button id="exportBtn" class="btn btn-muted" style="padding:6px 8px; font-size:12px">EXPORTAR</button>
+                  <button id="closeRuntimeBtn" class="btn" style="padding:6px 8px; font-size:12px"><i data-lucide="x" style="width:14px;height:14px"></i></button>
+                </div>
+              </div>
+              <iframe id="appFrame" class="runtime-iframe" sandbox="allow-scripts allow-forms allow-modals"></iframe>
+            </div>
+
+            <!-- Fusion card -->
+            <aside class="fusion-card closed" id="fusionCard" aria-label="Fusion Card" role="complementary">
+              <div class="card-header">
+                <div class="avatar-slot" id="avatarSlot" aria-hidden="true"></div>
+                <div style="flex:1">
+                  <div class="greeting-row"><span id="lblHello" style="font-size:12px;color:rgba(255,255,255,0.7)">Sistema</span> <strong id="lblName">Convidado</strong></div>
+                  <div class="brand-dual">DUAL</div>
+                </div>
+                <div style="text-align:right; font-family:'JetBrains Mono'; font-size:12px; color:rgba(255,255,255,0.6)">ONLINE</div>
+              </div>
+
+              <div class="small-preview" id="smallPreview" title="Clique para abrir">
+                <div style="width:36px;height:36px;border-radius:8px;overflow:hidden" id="miniAvatar"></div>
+                <div id="smallText" style="font-size:13px;color:rgba(255,255,255,0.9)">Ativação aparecerá aqui</div>
+                <div style="margin-left:auto; font-weight:700; font-size:12px; padding:4px 8px; border-radius:999px; background:rgba(255,255,255,0.03); color:rgba(255,255,255,0.9)" id="smallIdent">--</div>
+              </div>
+
+              <div style="margin-top:10px" id="cardBody">
+                <div class="stagger-item">
+                  <input id="inputUser" class="cyber-input" placeholder="Identifique-se..." />
+                </div>
+
+                <div class="stagger-item" style="margin-top:8px">
+                  <button id="toggleModules" class="trigger-btn">ABRIR MÓDULOS <i data-lucide="chevron-down" style="width:14px;height:14px"></i></button>
+                </div>
+
+                <div class="hidden-modules content-visible" style="margin-top:10px">
+                  <div class="modules-inner">
+                    <div class="stats-grid">
+                      <div class="stat-box"><div style="font-size:10px;color:rgba(255,255,255,0.6)">LATÊNCIA</div><div style="font-weight:700;color:var(--neon-cyan)">12ms</div></div>
+                      <div class="stat-box"><div style="font-size:10px;color:rgba(255,255,255,0.6)">CPU</div><div style="font-weight:700;color:var(--neon-cyan)">FUSION</div></div>
+                      <div class="stat-box"><div style="font-size:10px;color:rgba(255,255,255,0.6)">RITMO</div><div style="font-weight:700;color:var(--neon-cyan)">BETA</div></div>
+                    </div>
+
+                    <div style="margin-top:10px; border-radius:10px; padding:10px; border:1px solid rgba(255,255,255,0.02); background:rgba(255,255,255,0.01)">
+                      <div style="font-size:12px; color:rgba(255,255,255,0.6); margin-bottom:6px">Módulo HTML</div>
+                      <div style="padding:12px; border-radius:8px; background:rgba(0,0,0,0.2); font-family:'JetBrains Mono'; font-size:12px; color:var(--neon-orange)">Pronto para injeção</div>
+                    </div>
+
+                  </div>
+                </div>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </div>
+
+    </section>
+  </div>
+
+  <!-- Footer orb -->
+  <div class="foot-controls" aria-hidden="false">
+    <button id="orbBtn" class="orb-btn" title="Toggle Monolith"><i data-lucide="circle" style="width:18px;height:18px;color:var(--neon-cyan)"></i></button>
+    <button id="openPageBtn" class="btn btn-muted">Index</button>
+  </div>
+
+  <!-- HTML Editor Modal -->
+  <div id="htmlEditorModal" style="display:none; position:fixed; inset:0; z-index:90; align-items:center; justify-content:center; background:rgba(0,0,0,0.75);">
+    <div style="width:min(1100px,94%); height:min(720px,92%); background:#071018; border-radius:12px; overflow:hidden; display:flex; flex-direction:column; border:1px solid rgba(255,255,255,0.06)">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-bottom:1px solid rgba(255,255,255,0.02)">
+        <div style="font-family:'JetBrains Mono'; color:var(--neon-cyan)">HTML EDITOR — PAGINA ATUAL</div>
+        <div style="display:flex; gap:8px">
+          <button id="applyToFrame" class="btn btn-muted">Aplicar</button>
+          <button id="downloadHTML" class="btn">Baixar</button>
+          <button id="closeEditor" class="btn btn-muted">✖</button>
+        </div>
+      </div>
+      <textarea id="htmlEditorTextarea" spellcheck="false" style="flex:1; width:100%; padding:12px; background:#04101a; color:#dfefff; border:0; font-family:'JetBrains Mono'; font-size:13px"></textarea>
+      <div style="padding:10px; display:flex; justify-content:flex-end; gap:8px; border-top:1px solid rgba(255,255,255,0.02)"><button id="saveAsModule" class="btn btn-muted">Salvar como Módulo</button></div>
+    </div>
+  </div>
+
+  <!-- Web component loader (light) -->
+  <script>
+    class MyFrameLoader extends HTMLElement {
+      constructor(){
+        super();
+        this.attachShadow({mode:'open'});
+        this.shadowRoot.innerHTML = `
+          <style>
+            :host{all:initial}
+            .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.86);display:flex;align-items:center;justify-content:center;z-index:99999}
+            .box{width:94%;height:88%;background:#071018;border-radius:12px;overflow:hidden;border:1px solid rgba(255,255,255,0.06);display:flex;flex-direction:column}
+            .top{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,0.02)}
+            .title{font-family:'JetBrains Mono';color:#9fdcff;font-size:12px}
+            button{background:none;border:0;color:#fff;cursor:pointer;font-size:16px}
+            iframe{flex:1;border:0;background:#fff}
+          </style>
+          <div class="overlay">
+            <div class="box">
+              <div class="top"><span class="title">EXTERNAL // LOADER</span><button class="close">✖</button></div>
+              <iframe></iframe>
+            </div>
+          </div>
+        `;
+        this.iframe = this.shadowRoot.querySelector('iframe');
+        this.shadowRoot.querySelector('.close').onclick = () => this.remove();
+      }
+      set src(v){ this.iframe.src = v; }
+    }
+    customElements.define('my-frame-loader', MyFrameLoader);
+  </script>
+
+  <!-- App Logic -->
+  <script>
+    lucide.createIcons();
+
+    const App = {
+      config: {
+        storageKey: 'dual_last_page',
+        stacksKey: 'dual_stacks_vf',
+        themeKey: 'dual_theme',
+        stateKey: 'dual_monolith_active'
+      },
+      state: { stacks: [], active: false },
+      refs: {
+        stackList: document.getElementById('stackList'),
+        fileInput: document.getElementById('fileInput'),
+        dropZone: document.getElementById('dropZone'),
+        appFrame: document.getElementById('appFrame'),
+        htmlEditorModal: document.getElementById('htmlEditorModal'),
+        htmlEditorTextarea: document.getElementById('htmlEditorTextarea'),
+        toast: document.getElementById('toast'),
+        fusionCard: document.getElementById('fusionCard'),
+        inputUser: document.getElementById('inputUser'),
+        smallPreview: document.getElementById('smallPreview'),
+        miniAvatar: document.getElementById('miniAvatar'),
+        smallText: document.getElementById('smallText'),
+        smallIdent: document.getElementById('smallIdent'),
+        lblName: document.getElementById('lblName'),
+        sysStatus: document.getElementById('sysStatus')
+      },
+
+      init(){
+        this.loadStacks();
+        this.bind();
+        this.initCanvas();
+        this.createAvatars();
+        this.restoreUser();
+        this.showToast('DUAL pronto');
+      },
+
+      /* Toast */
+      showToast(msg, t=1800){
+        const el = this.refs.toast;
+        el.textContent = msg; el.style.opacity = 1;
+        clearTimeout(this._toastTimer);
+        this._toastTimer = setTimeout(()=> el.style.opacity = 0, t);
+      },
+
+      /* stacks */
+      loadStacks(){
+        try{
+          const raw = localStorage.getItem(this.config.stacksKey);
+          if(raw) this.state.stacks = JSON.parse(raw);
+        }catch(e){ console.error(e) }
+        this.renderStacks();
+      },
+      saveStacks(){ localStorage.setItem(this.config.stacksKey, JSON.stringify(this.state.stacks)) },
+      addStackFromFile(file){
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const newStack = { id: Date.now(), title: file.name, content: e.target.result, date: new Date().toLocaleDateString() };
+          this.state.stacks.unshift(newStack); this.saveStacks(); this.renderStacks();
+          this.showToast('Módulo integrado');
+        };
+        reader.readAsText(file);
+      },
+      renderStacks(){
+        const list = this.refs.stackList; list.innerHTML = '';
+        if(this.state.stacks.length===0){
+          list.innerHTML = `<div style="padding:16px;color:rgba(255,255,255,0.4); font-family:'JetBrains Mono'">Nenhum módulo salvo</div>`;
+          return;
+        }
+        this.state.stacks.forEach(s=>{
+          const el = document.createElement('div'); el.className='stack-item';
+          el.innerHTML = `
+            <div class="meta">
+              <div class="badge"><i data-lucide="package" style="width:14px;height:14px;color:var(--neon-cyan)"></i></div>
+              <div>
+                <div style="font-weight:700">${s.title}</div>
+                <div style="font-size:11px;color:rgba(255,255,255,0.45)">${s.date}</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="run-btn btn btn-muted" title="Executar">▶</button>
+              <button class="del-btn btn" title="Apagar">🗑</button>
+            </div>
+          `;
+          el.querySelector('.run-btn').onclick = (ev)=>{ ev.stopPropagation(); this.runStack(s.id) };
+          el.querySelector('.del-btn').onclick = (ev)=>{ ev.stopPropagation(); this.removeStack(s.id) };
+          el.onclick = ()=> this.runStack(s.id);
+          list.appendChild(el);
+        });
+        lucide.createIcons();
+      },
+      removeStack(id){ if(confirm('Desintegrar este módulo?')){ this.state.stacks = this.state.stacks.filter(s=>s.id!==id); this.saveStacks(); this.renderStacks(); } },
+      runStack(id){
+        const stack = this.state.stacks.find(s=>s.id===id); if(!stack) return;
+        this.refs.appFrame.srcdoc = stack.content;
+        this.refs.sysStatus.textContent = 'RUNNING';
+        this.showToast('Executando módulo');
+      },
+
+      /* Editor */
+      openEditor(){ this.refs.htmlEditorModal.style.display='flex'; const last = localStorage.getItem('dual_html_editor_last'); if(last) this.refs.htmlEditorTextarea.value = last; },
+      closeEditor(){ this.refs.htmlEditorModal.style.display='none' },
+      applyHtmlToFrame(){
+        const html = this.refs.htmlEditorTextarea.value || '';
+        localStorage.setItem('dual_html_editor_last', html);
+        try{
+          const blob = new Blob([html], {type:'text/html'});
+          const url = URL.createObjectURL(blob);
+          this.refs.appFrame.src = url;
+          this.showToast('Aplicado ao runtime');
+        }catch(e){
+          this.refs.appFrame.srcdoc = html;
+          this.showToast('Aplicado via srcdoc');
+        }
+      },
+      saveAsModule(){
+        const html = this.refs.htmlEditorTextarea.value || '';
+        const newStack = { id: Date.now(), title:`module-${Date.now()}.html`, content: html, date: new Date().toLocaleDateString() };
+        this.state.stacks.unshift(newStack); this.saveStacks(); this.renderStacks(); this.showToast('Salvo como módulo');
+      },
+
+      /* events */
+      bind(){
+        const up = this.refs.fileInput;
+        document.getElementById('openEditorBtn').addEventListener('click', ()=> this.openEditor());
+        document.getElementById('quickEditBtn').addEventListener('click', ()=> this.openEditor());
+        document.getElementById('closeEditor').addEventListener('click', ()=> this.closeEditor());
+        document.getElementById('applyToFrame').addEventListener('click', ()=> this.applyHtmlToFrame());
+        document.getElementById('downloadHTML').addEventListener('click', ()=> this.downloadEditorHtml());
+        document.getElementById('saveAsModule').addEventListener('click', ()=> this.saveAsModule());
+
+        // drop
+        const dz = this.refs.dropZone;
+        dz.addEventListener('click', ()=> up.click());
+        up.addEventListener('change', (e)=> { if(e.target.files[0]) this.addStackFromFile(e.target.files[0]) });
+
+        dz.addEventListener('dragover',(e)=>{ e.preventDefault(); dz.style.borderColor='rgba(0,242,255,0.35)' });
+        dz.addEventListener('dragleave',()=>{ dz.style.borderColor='rgba(255,255,255,0.04)' });
+        dz.addEventListener('drop',(e)=>{ e.preventDefault(); dz.style.borderColor='rgba(255,255,255,0.04)'; if(e.dataTransfer.files[0]) this.addStackFromFile(e.dataTransfer.files[0]); });
+
+        // orb toggle
+        document.getElementById('orbBtn').addEventListener('click', ()=> {
+          const body = document.body; const active = body.classList.toggle('system-active');
+          localStorage.setItem(this.config.stateKey, String(active));
+          this.refs.sysStatus.textContent = active ? 'READY' : 'STANDBY';
+        });
+
+        // editor shortcuts
+        window.addEventListener('keydown', (e)=> {
+          if(e.key==='Escape') this.closeEditor();
+          if((e.ctrlKey||e.metaKey) && e.key === 'e'){ e.preventDefault(); this.openEditor(); }
+        });
+
+        // small preview / fusion card toggle
+        document.getElementById('fusionCard').addEventListener('click', (e)=>{
+          const c = this.refs.fusionCard;
+          if(c.classList.contains('closed')){ c.classList.remove('closed'); c.classList.add('open'); this.refs.inputUser.focus(); }
+          else { c.classList.add('closed'); c.classList.remove('open'); }
+        });
+
+        // input user
+        this.refs.inputUser.addEventListener('input', (e)=> { const v=e.target.value; if(v){ document.getElementById('lblHello').textContent='Oi,'; this.refs.lblName.textContent = v } else { document.getElementById('lblHello').textContent='Sistema'; this.refs.lblName.textContent='Convidado' } this.updateSmallPreviewFromName(v) });
+        this.refs.inputUser.addEventListener('blur', (e)=> { const v=e.target.value.trim(); if(v){ localStorage.setItem('fusion_user', v); this.speak(`Usuário ${v} confirmado.`) }});
+
+        // runtime controls
+        document.getElementById('closeRuntimeBtn').addEventListener('click', ()=> { this.refs.appFrame.srcdoc = ''; this.refs.sysStatus.textContent = 'READY'; this.showToast('Runtime fechado') });
+        document.getElementById('exportBtn').addEventListener('click', ()=> { if(this.refs.appFrame.srcdoc){ const blob = new Blob([this.refs.appFrame.srcdoc], {type:'text/html'}); const url = URL.createObjectURL(blob); const modal = document.createElement('my-frame-loader'); modal.src = url; document.body.appendChild(modal); } });
+
+        // mini preview click focuses
+        this.refs.smallPreview.addEventListener('click', ()=> { if(this.refs.fusionCard.classList.contains('closed')){ this.refs.fusionCard.classList.remove('closed') } this.refs.inputUser.focus(); });
+
+        // editor apply/save
+        document.getElementById('downloadHTML').addEventListener('click', ()=> this.downloadEditorHtml());
+      },
+
+      downloadEditorHtml(){
+        const html = this.refs.htmlEditorTextarea.value || '<!-- vazio -->';
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob([html], {type:'text/html'}));
+        a.download = 'page-edit.html'; document.body.appendChild(a); a.click(); a.remove();
+        this.showToast('Download iniciado');
+      },
+
+      speak(text){
+        if(!window.speechSynthesis) return;
+        window.speechSynthesis.cancel();
+        if(!text) return;
+        const u = new SpeechSynthesisUtterance(text); u.lang='pt-BR'; u.rate=1; window.speechSynthesis.speak(u);
+      },
+
+      /* small preview + avatar */
+      createAvatars(){
+        document.getElementById('avatarSlot').innerHTML = this.createAvatarSVG('A',64);
+        document.getElementById('miniAvatar').innerHTML = this.makeMiniAvatarHTML('DUAL',36);
+        lucide.createIcons();
+      },
+
+      createAvatarSVG(id,size=64){
+        return `
+          <svg viewBox="0 0 100 100" width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="g${id}" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="#00f2ff"/><stop offset="100%" stop-color="#bd00ff"/>
+              </linearGradient>
+            </defs>
+            <rect x="0" y="0" width="100" height="100" rx="16" fill="#071018"/>
+            <circle cx="50" cy="42" r="26" fill="url(#g${id})" opacity="0.95"/>
+            <path d="M20 78 q30-20 60 0" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="4" stroke-linecap="round"/>
+          </svg>
+        `;
+      },
+
+      makeMiniAvatarHTML(name='DUAL', size=32){
+        const seed = this.hashString(name);
+        const h1 = seed % 360; const h2 = (seed * 37) % 360;
+        return `
+          <svg width="${size}" height="${size}" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <defs>
+              <linearGradient id="gSmall" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stop-color="hsl(${h1} 90% 55%)"/><stop offset="100%" stop-color="hsl(${h2} 85% 45%)"/>
+              </linearGradient>
+            </defs>
+            <rect x="0" y="0" width="32" height="32" rx="6" fill="#071018"/>
+            <circle cx="16" cy="11" r="6" fill="url(#gSmall)"/>
+            <path d="M8 24 a8 4 0 0 1 16 0" stroke="rgba(255,255,255,0.06)" stroke-width="2" fill="none"/>
+          </svg>
+        `;
+      },
+
+      hashString(str){
+        let h = 2166136261 >>> 0;
+        for(let i=0;i<str.length;i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+        return h >>> 0;
+      },
+
+      updateSmallPreviewFromName(name){
+        const phrases = [
+          "Ativar foco estável.","Sintonizar ritmo criativo.","Amplificar percepção sutil.","Conectar ao core de coesão.",
+          "Iniciar limpeza cognitiva.","Engatar modo produtividade.","Equilibrar fluxo emocional.","Elevar nível de curiosidade.",
+          "Refinar intenção principal.","Fortalecer memória ativa.","Sincronizar com ciclo terrestre.","Ativar shield de atenção.",
+          "Optimizar caminhos de decisão.","Despertar intuição prática.","Atenuar ruídos internos.","Mapear prioridades do dia.",
+          "Habilitar modo aprendizado.","Sintonizar voz interior clara.","Aumentar resiliência mental.","Abrir canal de insights.",
+          "Energetizar campo criativo.","Ancorar objetivos curtos.","Preparar para execução suave.","Concluir com gratidão."
+        ];
+        const now = new Date();
+        const phrase = phrases[now.getHours() % phrases.length];
+        const miniText = (name && name.trim()) ? `${name.trim()} · ${phrase}` : `Ativação aparecerá aqui`;
+        this.refs.smallText.textContent = miniText;
+        const root = this.reduce369Short(name);
+        this.refs.smallIdent.textContent = (name && name.trim()) ? `v:${root}` : '--';
+        // mini avatar regen
+        this.refs.miniAvatar.innerHTML = this.makeMiniAvatarHTML(name || 'DUAL',36);
+        // vibe highlight
+        if(root === 3 || root === 6 || root === 9) this.refs.smallPreview.style.boxShadow = '0 8px 30px rgba(255,210,80,0.06)';
+        else this.refs.smallPreview.style.boxShadow = 'none';
+      },
+
+      reduce369Short(name){
+        if(!name || !name.trim()) return '--';
+        const s = name.split('').reduce((acc,ch)=> acc + ch.charCodeAt(0), 0);
+        let root = s;
+        while(root > 9) root = String(root).split('').reduce((a,b)=>a+Number(b), 0);
+        return root;
+      },
+
+      restoreUser(){
+        const saved = localStorage.getItem('fusion_user'); if(saved){ this.refs.inputUser.value = saved; this.refs.lblName.textContent = saved; this.updateSmallPreviewFromName(saved); }
+      },
+
+      /* Canvas painting */
+      initCanvas(){
+        const canvas = document.getElementById('bgCanvas');
+        const ctx = canvas.getContext('2d');
+        const DPR = window.devicePixelRatio || 1;
+        function resize(){ canvas.width = innerWidth * DPR; canvas.height = innerHeight * DPR; canvas.style.width = innerWidth+'px'; canvas.style.height = innerHeight+'px'; ctx.setTransform(DPR,0,0,DPR,0,0); draw() }
+        function draw(){
+          ctx.clearRect(0,0,innerWidth,innerHeight);
+          // soft blurred blobs
+          const g1 = ctx.createRadialGradient(innerWidth*0.12, innerHeight*0.22, 20, innerWidth*0.12, innerHeight*0.22, Math.min(innerWidth,innerHeight)*0.6);
+          g1.addColorStop(0, 'rgba(189,0,255,0.09)'); g1.addColorStop(1,'rgba(189,0,255,0.0)');
+          ctx.fillStyle = g1; ctx.fillRect(0,0, innerWidth*0.6, innerHeight*0.7);
+
+          const g2 = ctx.createRadialGradient(innerWidth*0.88, innerHeight*0.78, 20, innerWidth*0.88, innerHeight*0.78, Math.min(innerWidth,innerHeight)*0.6);
+          g2.addColorStop(0, 'rgba(0,242,255,0.07)'); g2.addColorStop(1,'rgba(0,242,255,0.0)');
+          ctx.fillStyle = g2; ctx.fillRect(innerWidth*0.4, innerHeight*0.1, innerWidth, innerHeight*0.9);
+
+          // subtle vignette
+          const vg = ctx.createRadialGradient(innerWidth/2, innerHeight/2, Math.min(innerWidth,innerHeight)*0.2, innerWidth/2, innerHeight/2, Math.max(innerWidth,innerHeight));
+          vg.addColorStop(0, 'rgba(0,0,0,0)');
+          vg.addColorStop(1, 'rgba(0,0,0,0.38)');
+          ctx.fillStyle = vg; ctx.fillRect(0,0,innerWidth,innerHeight);
+        }
+        addEventListener('resize', resize);
+        resize();
+        // slow reposition on mousemove for parallax
+        window.addEventListener('mousemove', (e)=>{
+          // mild repaint using transforms (cheap) — we just shift canvas via CSS transform
+          const rx = (e.clientX / innerWidth - 0.5) * 6;
+          const ry = (e.clientY / innerHeight - 0.5) * 6;
+          canvas.style.transform = `translate3d(${rx}px, ${ry}px, 0)`;
+        });
+      }
+    };
+
+    window.addEventListener('DOMContentLoaded', ()=> App.init());
+  </script>
+</body>
+</html>
